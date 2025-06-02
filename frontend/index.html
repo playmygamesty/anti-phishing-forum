@@ -1,13 +1,46 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Retro Forum</title>
-    <link rel="stylesheet" href="/src/style.css" />
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<html>
+<head>
+  <title>Anti-Phishing Forum</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #eee; padding: 20px; }
+    .post { background: white; padding: 15px; margin-bottom: 20px; border-radius: 8px; }
+    .reply { margin-left: 20px; padding: 5px; background: #f9f9f9; border-radius: 5px; }
+    .bot { color: green; }
+  </style>
+</head>
+<body>
+  <h1>Welcome, {{ user }}! <a href="{{ url_for('logout') }}">Logout</a></h1>
+
+  <h2>Create a Post</h2>
+  <form action="{{ url_for('create_post') }}" method="POST">
+    Title:<br>
+    <input type="text" name="title" required><br>
+    Content:<br>
+    <textarea name="content" rows="3" cols="50" required></textarea><br>
+    <small>Use "@antiphish run check URL" in content to check URL safety</small><br>
+    <button type="submit">Post</button>
+  </form>
+
+  <h2>Posts</h2>
+  {% for post in posts %}
+  <div class="post">
+    <h3>{{ post.title }} (by {{ post.author }})</h3>
+    <p>{{ post.content }}</p>
+
+    <h4>Replies</h4>
+    {% for reply in post.replies %}
+      <div class="reply {% if reply.author == '@antiphish' %}bot{% endif %}">
+        <strong>{{ reply.author }}</strong>: <pre>{{ reply.content }}</pre>
+      </div>
+    {% endfor %}
+
+    <form action="{{ url_for('reply_post', post_id=post.id) }}" method="POST">
+      Reply:<br>
+      <textarea name="content" rows="2" cols="40" required></textarea><br>
+      <button type="submit">Reply</button>
+    </form>
+  </div>
+  {% endfor %}
+</body>
 </html>
