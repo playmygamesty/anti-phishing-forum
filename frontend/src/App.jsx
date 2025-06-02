@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import axios from "axios";
 
 // === CONFIG ===
-const API = "https://your-backend-url.onrender.com/api"; // CHANGE TO YOUR BACKEND URL!
+const API = "https://anti-phishing-forum-backend.onrender.com/api";
 
 // === Helpers ===
 function timeAgo(date) {
