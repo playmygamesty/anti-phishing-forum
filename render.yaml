@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: anti-phishing-forum
+    env: python
+    buildCommand: ""
+    startCommand: python backend/main.py
+    plan: free
