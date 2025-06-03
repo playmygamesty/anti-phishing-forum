@@ -1,6 +1,7 @@
 import os
 import base64
 import requests
+import time
 from flask import Flask, request, jsonify
 
 app = Flask(__name__)
@@ -8,30 +9,52 @@ app = Flask(__name__)
 VT_API_KEY = os.getenv("VT_API_KEY")
 
 def check_url_with_virustotal(url):
-    api_url = "https://www.virustotal.com/api/v3/urls"
     headers = {
         "x-apikey": VT_API_KEY
     }
-    
-    # Encode URL to base64 URL safe string without trailing '='
-    url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
-    full_url = f"{api_url}/{url_id}"
 
-    response = requests.get(full_url, headers=headers)
+    # Step 1: Check if already analyzed
+    url_id = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+    api_url = f"https://www.virustotal.com/api/v3/urls/{url_id}"
+
+    response = requests.get(api_url, headers=headers)
 
     if response.status_code == 200:
         data = response.json()
         stats = data.get("data", {}).get("attributes", {}).get("last_analysis_stats", {})
         return {"status": "found", "stats": stats}
+
     elif response.status_code == 404:
-        # URL not found, submit for scanning
-        submit_response = requests.post(api_url, headers=headers, data={"url": url})
+        # Step 2: Submit URL for analysis
+        submit_url = "https://www.virustotal.com/api/v3/urls"
+        submit_response = requests.post(submit_url, headers=headers, data={"url": url})
+        
         if submit_response.status_code == 200:
-            return {"status": "submitted", "message": "URL submitted for scanning. Please try again later."}
+            analysis_id = submit_response.json().get("data", {}).get("id")
+            
+            # Step 3: Wait for the analysis to complete
+            time.sleep(15)  # optional: increase if it's still not ready
+
+            # Step 4: Poll the analysis result
+            analysis_url = f"https://www.virustotal.com/api/v3/analyses/{analysis_id}"
+            analysis_response = requests.get(analysis_url, headers=headers)
+
+            if analysis_response.status_code == 200:
+                analysis_data = analysis_response.json()
+                status = analysis_data.get("data", {}).get("attributes", {}).get("status")
+
+                if status == "completed":
+                    stats = analysis_data.get("data", {}).get("attributes", {}).get("stats", {})
+                    return {"status": "found", "stats": stats}
+                else:
+                    return {"status": "pending", "message": "Scan still processing. Try again later."}
+            else:
+                return {"status": "error", "message": "Failed to retrieve scan results."}
         else:
             return {"status": "error", "message": "Failed to submit URL for scanning."}
     else:
         return {"status": "error", "message": f"API error: {response.status_code}"}
+
 
 @app.route('/api/check_url', methods=['POST'])
 def api_check_url():
