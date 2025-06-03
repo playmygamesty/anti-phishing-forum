@@ -3,20 +3,22 @@ from flask import Flask, request, jsonify, render_template, redirect, url_for, s
 from flask_cors import CORS
 from pymongo import MongoClient
 from bson.objectid import ObjectId
+import base64
+import requests
 
 app = Flask(__name__)
 CORS(app)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecret")
 
 # Connect to MongoDB
-MONGO_URI = os.environ.get("MONGO_URI")  # store your Atlas connection string in env var
+MONGO_URI = os.environ.get("MONGO_URI")
 client = MongoClient(MONGO_URI)
-db = client['antiphish_forum']  # your database name
+db = client['antiphish_forum']
 
 users_col = db['users']
 posts_col = db['posts']
 
-# Signup route
+# Signup
 @app.route("/signup", methods=["GET", "POST"])
 def signup():
     if request.method == "POST":
@@ -24,7 +26,7 @@ def signup():
         password = request.form.get("password")
         existing_user = users_col.find_one({"username": username})
         if existing_user:
-            return "Username taken", 400
+            return "Username already exists!", 400
         users_col.insert_one({
             "username": username,
             "password": password,
@@ -34,7 +36,7 @@ def signup():
         return redirect(url_for("login"))
     return render_template("signup.html")
 
-# Login route
+# Login
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
@@ -42,8 +44,7 @@ def login():
         password = request.form.get("password")
         user = users_col.find_one({"username": username})
         if user and user["password"] == password:
-            session["username"] = username
-            session["user_id"] = str(user["_id"])
+            session["username"] = user["username"]
             return redirect(url_for("index"))
         return "Invalid credentials", 401
     return render_template("login.html")
@@ -65,8 +66,9 @@ def current_user():
 def index():
     if not logged_in():
         return redirect(url_for("login"))
+    user = current_user()
     posts = list(posts_col.find())
-    return render_template("index.html", posts=posts, user=current_user())
+    return render_template("index.html", posts=posts, user=user)
 
 @app.route("/post", methods=["POST"])
 def create_post():
@@ -83,17 +85,14 @@ def create_post():
     }
     post_id = posts_col.insert_one(post).inserted_id
 
-    # Check for @antiphish run check URL in content
-    if content and "@antiphish run check " in content:
-        parts = content.split("@antiphish run check ")
-        if len(parts) > 1:
-            url_to_check = parts[1].strip()
-            report = check_url_virustotal(url_to_check)
-            bot_reply = {
-                "author": "@antiphish",
-                "content": f"URL Safety Report for {url_to_check}:\n{report}"
-            }
-            posts_col.update_one({"_id": post_id}, {"$push": {"replies": bot_reply}})
+    if "@antiphish run check " in content:
+        url_to_check = content.split("@antiphish run check ")[1].strip()
+        report = check_url_virustotal(url_to_check)
+        bot_reply = {
+            "author": "@antiphish",
+            "content": f"URL Safety Report for {url_to_check}:\n{report}"
+        }
+        posts_col.update_one({"_id": post_id}, {"$push": {"replies": bot_reply}})
 
     return redirect(url_for("index"))
 
@@ -109,7 +108,32 @@ def reply_post(post_id):
     )
     return redirect(url_for("index"))
 
-# Paste your VirusTotal check_url_virustotal function here (same as before)
+def check_url_virustotal(url):
+    api_key = os.environ.get("VT_API_KEY")
+    if not api_key:
+        return "VirusTotal API key not set."
+
+    headers = {"x-apikey": api_key}
+    url_b64 = base64.urlsafe_b64encode(url.encode()).decode().strip("=")
+    api_url = f"https://www.virustotal.com/api/v3/urls/{url_b64}"
+
+    res = requests.get(api_url, headers=headers)
+    if res.status_code == 404:
+        submit_res = requests.post("https://www.virustotal.com/api/v3/urls", headers=headers, data={"url": url})
+        if submit_res.status_code != 200:
+            return "Failed to submit URL for scanning."
+        return "URL submitted for scanning. Please check back later."
+    elif res.status_code == 200:
+        stats = res.json()["data"]["attributes"]["last_analysis_stats"]
+        return (
+            f"Total scans: {sum(stats.values())}\n"
+            f"Harmless: {stats.get('harmless', 0)}\n"
+            f"Malicious: {stats.get('malicious', 0)}\n"
+            f"Suspicious: {stats.get('suspicious', 0)}\n"
+            f"Undetected: {stats.get('undetected', 0)}"
+        )
+    else:
+        return f"Error from VirusTotal: {res.status_code}"
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 10000))
