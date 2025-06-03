@@ -11,7 +11,7 @@ CORS(app)
 app.secret_key = os.environ.get("SECRET_KEY", "supersecret")
 
 # Connect to MongoDB
-MONGO_URI = os.environ.get("MONGO_URI")
+MONGO_URI = os.getenv("MONGODB_URI")
 client = MongoClient(MONGO_URI)
 db = client['antiphish_forum']
 
