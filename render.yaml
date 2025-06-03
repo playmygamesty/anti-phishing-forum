@@ -2,5 +2,5 @@ services:
   - type: web
     name: anti-phishing-forum
     env: python
-    buildCommand: cd backend && pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt
     startCommand: python backend/main.py
